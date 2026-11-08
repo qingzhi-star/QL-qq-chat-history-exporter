@@ -1,8 +1,7 @@
 # 绮录 Electron 桌面端
 
-当前源码版本 `0.4.0`，已验证平台为 Windows 11 x64，正式资产以 GitHub Release 为准。软件全称为「绮录QQ聊天记录导出软件」，品牌及图标继续沿用
-[品牌母版与规则](branding.md)。Python 版本唯一来源仍是 pyproject.toml，npm 对应
-`0.4.0`；不以普通提交次数递增版本，候选修订递增 rc。
+当前源码版本为 `0.4.1`，正式资产以 GitHub Release 为准。软件全称为「绮录QQ聊天记录导出软件」。
+版本以 `pyproject.toml` 为准，npm 和安装包同步。性能优化与问题修复只递增补丁号，例如 `v0.4.0` → `v0.4.1`。候选修订递增 rc。
 
 ## 0.4.0 隐私确认与多线程读取
 
@@ -99,7 +98,7 @@ python tools/build_electron.py --wheelhouse build/release-wheelhouse
 ```
 
 `--electron-dist` 可指定已经校验官方 SHA256 的 Electron 运行库目录，避免重复下载。
-构建输出位于 `dist/electron-0.4.0`，包括 Inno Setup 安装器、完整目录 ZIP、
+构建输出位于 `dist/electron-0.4.1`，包括 Inno Setup 安装器、完整目录 ZIP、
 win-unpacked 测试目录和指纹清单。Electron 45 的 `electron_wer.dll` 须与主 exe 同名
 （`绮录QQ聊天记录导出软件_wer.dll`），构建时保留该配对。
 

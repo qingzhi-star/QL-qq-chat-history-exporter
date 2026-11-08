@@ -1,69 +1,11 @@
 """当前账号卡片与原位展开列表，仅加载本机头像和显示资料。"""
-from dataclasses import dataclass
-import os
-import sqlite3
 import tkinter as tk
 from tkinter import ttk
 from PIL import ImageTk
-from qqexport.core import companions,keystore
-from qqexport.qq import contacts,avatars
+from qqexport.account_identity import Identity, database_in_use, profile_name, read_identity
+from qqexport.qq import avatars
 from qqexport.gui_avatars import rounded,placeholder
 from qqexport.ui import INK,MUTED,ACCENT,ActionButton
-
-
-@dataclass(frozen=True)
-class Identity:
-    uin: str
-    name: str = "QQ 用户"
-    avatar: bytes | None = None
-    active: bool = False
-
-
-def profile_name(book,uin):
-    person = book.friends_by_uin.get(uin)
-    if person and (person.nick or person.remark):
-        return person.nick or person.remark
-    for (_,member_uin),member in book.members_by_uin.items():
-        if member_uin==uin and member.nick:
-            return member.nick
-    return "QQ 用户"
-
-
-def database_in_use(account):
-    """只探测文件共享占用，不读取认证资料；占用是活跃账号的本机信号。"""
-    if os.name!="nt":
-        return False
-    import ctypes
-    from ctypes import wintypes
-    kernel = ctypes.WinDLL("kernel32",use_last_error=True)
-    kernel.CreateFileW.argtypes = [wintypes.LPCWSTR,wintypes.DWORD,wintypes.DWORD,ctypes.c_void_p,
-                                  wintypes.DWORD,wintypes.DWORD,wintypes.HANDLE]
-    kernel.CreateFileW.restype = wintypes.HANDLE
-    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
-    handle = kernel.CreateFileW(str(account.msg_db),0x80000000,0,None,3,128,None)
-    if handle==ctypes.c_void_p(-1).value:
-        return ctypes.get_last_error() in (32,33)
-    kernel.CloseHandle(handle)
-    return False
-
-
-def read_identity(account, *, include_avatar=True):
-    name = "QQ 用户"
-    try:
-        key = keystore.KeyStore().load(account.uin)
-        if key:
-            from qqexport.temporary import workspace
-            with workspace("profiles") as temp:
-                from pathlib import Path
-                profile = companions.decrypt_companion(account.db_dir/"profile_info.db",key,Path(temp))
-                book = contacts.Contacts.load(profile,None,account_uin=account.uin)
-                name = profile_name(book,account.uin)
-                if name=="QQ 用户":
-                    group = companions.decrypt_companion(account.db_dir/"group_info.db",key,Path(temp))
-                    name = profile_name(contacts.Contacts.load(profile,group,account_uin=account.uin),account.uin)
-    except (OSError,RuntimeError,ValueError,sqlite3.Error):
-        pass
-    return Identity(account.uin,name,avatars.fetch_avatar(account.uin) if include_avatar else None,database_in_use(account))
 
 
 class AccountPanel:

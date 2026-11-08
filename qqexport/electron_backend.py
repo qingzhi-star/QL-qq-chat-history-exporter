@@ -15,7 +15,7 @@ from datetime import datetime
 
 from qqexport import __version__, config
 from qqexport.account_access import account_key, AccountAccessError
-from qqexport.account_panel import profile_name, read_identity
+from qqexport.account_identity import profile_name, read_identity
 from qqexport.core import discover
 from qqexport.core.decrypt import DatabaseBusyError, DecryptError
 from qqexport.errors import UserError

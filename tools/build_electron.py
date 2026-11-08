@@ -67,8 +67,8 @@ def main():
         write_version_file(version_file,version)
         run([python,"-m","PyInstaller","--noconfirm","--clean","--console","--onedir","--name","qilu-core",
              "--distpath",ROOT/"build/electron-core","--workpath",Path(temporary)/"work","--specpath",temporary,
-             "--collect-submodules","qqexport","--collect-data","qqexport","--copy-metadata","qqexport",
-             "--copy-metadata","regex","--hidden-import","PIL._tkinter_finder","--icon",ROOT/"qqexport/assets/qilu.ico",
+             "--exclude-module","tkinter","--exclude-module","qqexport.archive_ui","--copy-metadata","qqexport",
+             "--copy-metadata","regex","--icon",ROOT/"qqexport/assets/qilu.ico",
              "--version-file",version_file,
              ROOT/"tools/launch_electron_core.py"])
     bundle = ROOT/"build/electron-core/qilu-core"

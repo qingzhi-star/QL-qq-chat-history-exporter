@@ -267,6 +267,12 @@ def _recall_text(raw: bytes) -> str:
     return ""
 
 
+MESSAGE_COLUMNS = frozenset({
+    mm.COL_MSG_ID, mm.COL_TIMESTAMP, mm.COL_BLOB, mm.COL_OUTER_TYPE, mm.COL_SUB_TYPE,
+    mm.COL_DIRECTION, mm.COL_SENDER_UID, mm.COL_SENDER_UIN, mm.COL_PEER_ID,
+})
+
+
 def parse_message(row: dict[str, object], ctx: ParseContext) -> Message:
     blob = row.get(mm.COL_BLOB)
     outer = _as_int(row.get(mm.COL_OUTER_TYPE))

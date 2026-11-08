@@ -39,6 +39,8 @@ class MessageRepository:
         found = tables.discover(self._con)
         self._tables = {"c2c": found.c2c, "group": found.group}
         self._columns = {}
+        self._projections = {}
+        read_columns = messages.MESSAGE_COLUMNS | {mm.COL_PEER_UIN}
         try:
             self._con.execute("CREATE TEMP TABLE ordering (chat TEXT, ts INTEGER, mid INTEGER, "
                               "rid INTEGER, ord INTEGER, PRIMARY KEY(chat, ord)) WITHOUT ROWID")
@@ -46,10 +48,13 @@ class MessageRepository:
                 if table is None:
                     continue
                 columns = tables.columns_of(self._con, table)
-                self._columns[kind] = columns
                 if not {mm.COL_PEER_ID, mm.COL_TIMESTAMP, mm.COL_MSG_ID}.issubset(columns):
                     self._tables[kind] = None
                     continue
+                self._columns[kind] = [column for column in columns if column in read_columns]
+                self._projections[kind] = ",".join(
+                    "m." + tables._quote(column) for column in self._columns[kind]
+                )
                 peer, ts, mid = map(tables._quote, (mm.COL_PEER_ID, mm.COL_TIMESTAMP, mm.COL_MSG_ID))
                 system = (f'COALESCE({tables._quote(mm.COL_OUTER_TYPE)},0) != 1'
                           if mm.COL_OUTER_TYPE in columns else "1")
@@ -91,7 +96,7 @@ class MessageRepository:
                 if table is None:
                     continue
                 cols = self._columns[kind]
-                selected = ",".join("m."+tables._quote(c) for c in cols)
+                selected = self._projections[kind]
                 rows = self._con.execute(
                     f"SELECT s.chat,s.amount,s.first_ts,s.last_ts,{selected} FROM summaries s "
                     "JOIN ordering o ON o.chat=s.chat AND o.ord=s.last_ord "
@@ -147,7 +152,7 @@ class MessageRepository:
         if table is None:
             return []
         cols = self._columns[kind]
-        selected = ",".join("m." + tables._quote(c) for c in cols)
+        selected = self._projections[kind]
         order = "DESC" if reverse else "ASC"
         ordering = ",".join(f"o.{key} {order}" for key in ("ts","mid","rid")) if cursor_order else f"o.ord {order}"
         key = (chat_id,where,tuple(params),limit,reverse,cursor_order)
