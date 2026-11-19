@@ -99,3 +99,34 @@ def test_filename_lookup_does_not_scan_all_media(tmp_path):
     assert not media.resolve(index,"image",None,None,MD5A+".jpg").missing
     assert not media.resolve(index,"image",None,None,MD5A[:24]+".jpg").missing
     assert media.resolve(index,"image",None,None,"synthetic-missing.jpg").missing
+def test_attachment_write_failure_does_not_publish_partial_file(tmp_path, monkeypatch):
+    from contextlib import contextmanager
+    import errno
+
+    import pytest
+
+    from qqexport.export import media_copy
+    from qqexport.export.model import MediaRef
+
+    source = tmp_path / "source.bin"
+    source.write_bytes(b"synthetic attachment")
+    out = tmp_path / "out"
+    open_temporary = media_copy.NamedTemporaryFile
+
+    @contextmanager
+    def disk_full(*args, **kwargs):
+        with open_temporary(*args, **kwargs) as stream:
+            def write(data):
+                stream.file.write(data[:4])
+                raise OSError(errno.ENOSPC, "synthetic disk full")
+
+            stream.write = write
+            yield stream
+
+    with monkeypatch.context() as patch:
+        patch.setattr(media_copy, "NamedTemporaryFile", disk_full)
+        with pytest.raises(OSError, match="synthetic disk full"):
+            media_copy.copy_media([MediaRef("file", source=source, missing=False)], out)
+    assert not list(out.iterdir())
+    result = media_copy.copy_media([MediaRef("file", source=source, missing=False)], out)
+    assert (out / result.rel_by_source[source]).read_bytes() == source.read_bytes()

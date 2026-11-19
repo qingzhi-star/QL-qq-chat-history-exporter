@@ -211,19 +211,30 @@ def _pid_alive(pid: int) -> bool:
 
 
 def _cleanup_stale(root: Path) -> None:
-    """删除崩溃遗留的临时/备份目录；仍存活进程的目录保留。"""
+    """发布中断时恢复最后一份旧产物，再清理已完成的替换。"""
+    backups = []
     for path in root.iterdir():
-        if not path.is_dir():
+        if path.is_symlink() or path.is_junction() or not path.is_dir():
             continue
-        match = re.match(r"^\.tmp-(\d+)-", path.name)
-        if match is None:
-            match = re.search(r"\.old-(\d+)-\d+$", path.name)
-        if match is None:
+        match = re.fullmatch(r"\.tmp-(\d+)-\d+", path.name)
+        if match and not _pid_alive(int(match[1])):
+            shutil.rmtree(path, ignore_errors=True)
+        match = re.fullmatch(r"(.+)\.old-(\d+)-(\d+)", path.name)
+        if match and match[1] not in {".", ".."}:
+            backups.append((int(match[3]), int(match[2]), path, path.with_name(match[1])))
+
+    active_targets = {target for _, pid, _, target in backups if _pid_alive(pid)}
+    for _, _, backup, target in sorted(backups, reverse=True):
+        if target in active_targets:
             continue
-        pid = int(match.group(1))
-        if _pid_alive(pid):
-            continue
-        shutil.rmtree(path, ignore_errors=True)
+        if target.exists():
+            shutil.rmtree(backup, ignore_errors=True)
+        else:
+            try:
+                _rename_dir(backup, target)
+            except OSError:
+                # 另一进程可能正在恢复或占用文件。留待下次重试。
+                active_targets.add(target)
 
 
 def _rename_dir(source: Path, target: Path) -> None:

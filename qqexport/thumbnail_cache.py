@@ -41,13 +41,22 @@ class ThumbnailCache:
                 yield
 
     def _trim(self):
-        files = sorted(self.root.glob("*.png"),key=lambda p:p.stat().st_mtime_ns)
-        total = sum(path.stat().st_size for path in files)
-        for path in files:
+        files = []
+        total = 0
+        for path in self.root.glob("*.png"):
+            try:
+                stat = path.stat()
+            except FileNotFoundError:
+                continue
+            files.append((stat.st_mtime_ns, stat.st_size, path))
+            total += stat.st_size
+        if total <= self.limit:
+            return
+        for _, size, path in sorted(files):
             if total<=self.limit:
                 break
-            total -= path.stat().st_size
             path.unlink(missing_ok=True)
+            total -= size
 
     def clear(self):
         with self.lease():

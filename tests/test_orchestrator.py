@@ -295,8 +295,20 @@ def test_stale_temp_and_backup_dirs_are_cleaned(tmp_path):
             format="txt", out_base=out, now=NOW))
     assert not dead_tmp.exists()
     assert not dead_old.exists()
+    assert (root / "旧目录" / "marker").read_text(encoding="utf-8") == "x"
     assert live_tmp.exists()
     shutil.rmtree(live_tmp, ignore_errors=True)
+
+
+def test_stale_backup_recovery_prefers_newest_complete_export(tmp_path, monkeypatch):
+    monkeypatch.setattr(orchestrator, "_pid_alive", lambda pid: False)
+    for generation in (9, 10):
+        backup = tmp_path / f"聊天记录.old-999-{generation}"
+        backup.mkdir()
+        (backup / "chat.txt").write_text(str(generation), encoding="utf-8")
+    orchestrator._cleanup_stale(tmp_path)
+    assert (tmp_path / "聊天记录" / "chat.txt").read_text(encoding="utf-8") == "10"
+    assert not list(tmp_path.glob("*.old-*"))
 
 
 def test_system_only_c2c_chat_is_hidden(tmp_path):

@@ -254,6 +254,9 @@ def export_chat(repo,chat_id,opts):
                 else:
                     txt.write_txt(chat,work/"chat.txt",txt.TxtOptions(encoding=opts.encoding,cancel=opts.cancel))
             if formats&{"html","pdf"}:
+                if ("pdf" in formats and not opts.allow_large_pdf and
+                        stats["total"] > orchestrator._PDF_MESSAGE_LIMIT):
+                    raise IncrementalConflict("PDF 超过 30000 条；请明确允许大 PDF 或改用其他格式")
                 rendered = orchestrator._inline_images(new_messages,cancel=opts.cancel)
                 chat = Chat(info.kind,info.peer,info.title,info.subtitle,rendered)
                 relative = Path("chat.html") if "html" in formats else Path("_state/chat.html")
@@ -267,8 +270,8 @@ def export_chat(repo,chat_id,opts):
                 else:
                     html.write_html(chat,destination.parent,options)
                 if "pdf" in formats:
-                    if stats["total"]>30000 and not opts.allow_large_pdf:
-                        raise IncrementalConflict("PDF 超过 30000 条；请明确允许大 PDF 或改用其他格式")
+                    if not opts.allow_large_pdf and destination.stat().st_size > orchestrator._PDF_HTML_LIMIT:
+                        raise IncrementalConflict("PDF 打印内容超过 128 MiB，请缩小导出范围或改用其他格式")
                     result = pdf.write_pdf(destination,work/"chat.pdf",edge=opts.edge,cancel=opts.cancel)
                     if not result.ok:
                         raise IncrementalConflict(result.error or "PDF 生成失败")
