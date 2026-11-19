@@ -41,3 +41,17 @@ Python/Node 为随包内核与运行库，用户无需另行安装。PDF 使用 
 冻结包的归档/搜索/TXT/HTML/PDF、源数据只读、安装/卸载、双栏 GUI 和帧间隔验证
 由同提交的 tools/smoke_electron.py 生成；正式包发行门要求该报告与产物清单哈希一致。
 旧表及旧性能记录不能替代这份同构建证据。
+
+## Electron 0.4.2rc2 候选版
+
+验证日期为 2026-11-19，分发构建源自 `e7d7d5e`。验收使用同一构建清单核对安装包、便携包及文件哈希。
+
+| 系统或场景 | 证据 | 结论 |
+| --- | --- | --- |
+| Windows 11 x64 · 26200 | 中文与空格路径完整解压。真实安装器安装、启动、卸载均成功。 | PASS |
+| Windows 11 x64 · 离线导出 | 隔离运行环境使用包内冻结内核，合成加密归档、搜索、TXT／HTML／PDF 和源文件哈希对比通过。 | PASS |
+| Windows 11 x64 · 界面回归 | 独立桌面离屏运行。五轮合成便携版首条消息中位数 78 ms，随机跳转稳定中位数 53 ms。 | PASS，离屏样本 |
+| Windows 10 22H2 x64 | 当前构建尚无来宾环境结果。 | 未验证 |
+| 真实 QQ 数据、前台性能 | 当前构建尚无授权真机样本和目标前台环境的结果。 | 未验证 |
+
+当前候选版的发布范围为 Windows 11 x64。普通回归、Windows Python 矩阵和 Electron 验证可查阅 [GitHub Actions](https://github.com/qingzhi-star/QL-qq-chat-history-exporter/actions/runs/44496705350)。
