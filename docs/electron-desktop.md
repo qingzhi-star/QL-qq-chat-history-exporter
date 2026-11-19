@@ -103,14 +103,17 @@ win-unpacked 测试目录和指纹清单。Electron 45 的 `electron_wer.dll` �
 （`绮录QQ聊天记录导出软件_wer.dll`），构建时保留该配对。
 
 自动界面测试只用合成的 200 会话/十万条消息，不输出本人聊天内容。
+冒烟测试和 PDF 验证使用隐藏、不可激活的测试窗口。测试中的帧时间用于功能回归，前台性能验收另行记录。
 主界面 PDF 使用 Electron 内置 Chromium 的独立隐藏打印窗口，禁止脚本与外部网络，
 支持取消且不关闭用户的浏览器。独立 CLI/计划内核保留原 Edge 后备路径。
 
 可通过 QILU_PACKAGED_EXE 指向已解压应用，再运行同一套测试校验冻结后的内核。
 生产启动不要设置 QILU_DEMO、QQEXPORT_HOME、QILU_TEST_HOME 等测试变量。
 
-若开发目录继承了不完整的 AppContainer ACL，Electron 可能在启动时退出；在标准用户
-目录解压验证可区分目录环境问题与程序问题，不能通过关闭沙箱作为产品修复。
+若便携版在窗口出现前以 `0x80000003` 退出，先重新完整解压到普通用户有权限的目录复验。
+Electron 日志若出现 `install_dir_access.cc` 和 `Sandboxed processes cannot read`，表示程序目录的
+AppContainer 访问权限有问题。使用可供 Windows 沙箱读取程序文件的解压目录，保留 Electron 沙箱。
+测试时可以独立指定 `.local/` 中的用户数据、缓存和临时目录，用于区分程序目录和配置目录的问题。
 构建用临时目录仅由子进程环境指定，不修改系统 TEMP 或目录访问控制。
 
 安装与卸载由与原项目相同的锁定 Inno Setup 6.7.3 生成；Electron-builder 仅负责

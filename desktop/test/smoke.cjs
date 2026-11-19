@@ -8,7 +8,7 @@ const os = require('node:os');
   const root = path.resolve(__dirname, '../..');
   const home = await fs.mkdtemp(path.join(os.tmpdir(),'qilu-electron-smoke-'));
   const executablePath = process.env.QILU_PACKAGED_EXE || process.env.QILU_ELECTRON_RUNTIME || require('electron');
-  const appEnv = {...process.env,QILU_DEMO:'1',QILU_TEST_HOME:path.join(home,'electron'),QQEXPORT_HOME:path.join(home,'core'),PYTHONIOENCODING:'utf-8'};
+  const appEnv = {...process.env,QILU_DEMO:'1',QILU_BACKGROUND_TEST:'1',QILU_TEST_HOME:path.join(home,'electron'),QQEXPORT_HOME:path.join(home,'core'),PYTHONIOENCODING:'utf-8'};
   if(process.env.QILU_PACKAGED_EXE){
     appEnv.PATH=[path.join(process.env.SystemRoot,'System32'),process.env.SystemRoot].join(path.delimiter);
     delete appEnv.QILU_PYTHON;delete appEnv.PYTHONPATH;delete appEnv.PYTHONHOME;
@@ -18,7 +18,10 @@ const os = require('node:os');
   const report = { packaged: Boolean(process.env.QILU_PACKAGED_EXE), systemRuntimeRemoved: Boolean(process.env.QILU_PACKAGED_EXE), errors: [] };
   try {
     const page = await app.firstWindow();
-    await app.evaluate(({BrowserWindow})=>{const window=BrowserWindow.getAllWindows()[0];window.show();window.setAlwaysOnTop(true);window.focus();});
+    assert.ok(await app.evaluate(({BrowserWindow})=>{
+      const window=BrowserWindow.getAllWindows()[0];
+      return !window.isVisible() && !window.isFocusable() && !window.isAlwaysOnTop();
+    }), '冒烟测试窗口必须隐藏且不可激活');
     page.on('pageerror', error=>report.errors.push(error.message));
     await page.locator('#privacy-dialog').waitFor();
     assert.equal(await page.locator('.chat').count(),0);
@@ -166,16 +169,20 @@ const os = require('node:os');
     const declined=await electron.launch({executablePath,args:process.env.QILU_PACKAGED_EXE?[]:[path.join(root,'desktop')],
       env:{...appEnv,QQEXPORT_HOME:path.join(home,'declined-core'),QILU_TEST_HOME:path.join(home,'declined-electron')},timeout:45000});
     const declinedProcess=declined.process();
-    await declined.evaluate(({BrowserWindow})=>{const window=BrowserWindow.getAllWindows()[0];window.show();window.setAlwaysOnTop(true);window.focus();});
     try{
       const refusal=await declined.firstWindow();await refusal.locator('#privacy-dialog').waitFor();
+      assert.ok(await declined.evaluate(({BrowserWindow})=>{
+        const window=BrowserWindow.getAllWindows()[0];
+        return !window.isVisible() && !window.isFocusable();
+      }));
       await Promise.all([declined.waitForEvent('close'),refusal.locator('#privacy-decline').click()]);
       assert.equal(declinedProcess.exitCode,0);
       assert.equal(await fs.access(path.join(home,'declined-core')).then(()=>true,()=>false),false);
       report.privacyDeclined=true;
     }finally{if(declinedProcess.exitCode===null)await declined.close();}
     assert.deepEqual(report.errors,[]);
-    report.frameClock='requestAnimationFrame DOMHighResTimeStamp; timer intervals retained separately';report.pass=true;
+    report.frameClock='requestAnimationFrame DOMHighResTimeStamp; timer intervals retained separately';
+    report.hiddenWindow=true;report.pass=true;
     await fs.mkdir(path.join(root,'build'),{recursive:true});
     const output=path.join(root,'build',process.env.QILU_PACKAGED_EXE?'electron-packaged-smoke.json':'electron-ui-smoke.json');
     await fs.writeFile(output,JSON.stringify(report,null,2));

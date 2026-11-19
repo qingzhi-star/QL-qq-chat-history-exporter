@@ -18,6 +18,7 @@ app.setName(NAME);
 app.setAppUserModelId('qingzhi-star.Qilu');
 const isolated = process.env.QILU_TEST_HOME;
 if (isolated) app.setPath('userData', isolated);
+const backgroundTest = isolated && process.env.QILU_DEMO === '1' && process.env.QILU_BACKGROUND_TEST === '1';
 
 function senderAllowed(event) {
   return window && event.sender === window.webContents && event.senderFrame === window.webContents.mainFrame
@@ -36,7 +37,12 @@ function launchCore() {
     printPdf: request=>printer.print(request),cancelPdf:id=>printer.cancel(id) });
 }
 app.whenReady().then(async () => {
-  if(!privacy){dialog.showErrorBox('绮录无法启动','隐私条款资源缺失或校验失败。请重新下载并完整解压官方分发包，或重新安装绮录。未开始读取账号或聊天记录。');app.quit();return;}
+  if(!privacy){
+    const message='隐私条款资源缺失或校验失败。请重新下载并完整解压官方分发包，或重新安装绮录。未开始读取账号或聊天记录。';
+    if(backgroundTest){console.error(message);app.exit(1);}
+    else{dialog.showErrorBox('绮录无法启动',message);app.quit();}
+    return;
+  }
   protocol.handle('qilu', request => {
     const url = new URL(request.url);
     if (url.hostname !== 'app') return new Response('', { status: 404 });
@@ -52,11 +58,16 @@ app.whenReady().then(async () => {
     title: NAME, backgroundColor: '#f4f2f7', frame: false, show: false,
     icon: app.isPackaged ? path.join(process.resourcesPath, 'brand', 'qilu.ico') : path.join(ROOT, 'qqexport/assets/qilu.ico'),
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true,
-      nodeIntegration: false, sandbox: true, webSecurity: true, spellcheck: false } });
+      nodeIntegration: false, sandbox: true, webSecurity: true, spellcheck: false,
+      offscreen: Boolean(backgroundTest) } });
   window.removeMenu();
   window.webContents.on('will-navigate', event => event.preventDefault());
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  window.once('ready-to-show', () => window.show());
+  if (backgroundTest) {
+    window.setFocusable(false);
+    window.webContents.setBackgroundThrottling(false);
+  }
+  if (!backgroundTest) window.once('ready-to-show', () => window.show());
   ipcMain.handle('privacyInfo',event=>{validateSender(event);return privacy.info();});
   ipcMain.handle('privacyOpen',event=>{validateSender(event);return shell.openExternal(privacy.info().url);});
   ipcMain.handle('privacyAccept',(event,value)=>{

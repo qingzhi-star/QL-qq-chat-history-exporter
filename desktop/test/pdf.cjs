@@ -7,7 +7,7 @@ const os=require('node:os');
 (async()=>{
   const home=await fs.mkdtemp(path.join(os.tmpdir(),'qilu-pdf-test-'));
   const executablePath=process.env.QILU_PACKAGED_EXE||process.env.QILU_ELECTRON_RUNTIME||require('electron');
-  const env={...process.env,QILU_DEMO:'1',QQEXPORT_HOME:path.join(home,'core'),QILU_TEST_HOME:path.join(home,'electron')};
+  const env={...process.env,QILU_DEMO:'1',QILU_BACKGROUND_TEST:'1',QQEXPORT_HOME:path.join(home,'core'),QILU_TEST_HOME:path.join(home,'electron')};
   if(process.env.QILU_PACKAGED_EXE){
     env.PATH=[path.join(process.env.SystemRoot,'System32'),process.env.SystemRoot].join(path.delimiter);
     delete env.QILU_PYTHON;delete env.PYTHONPATH;delete env.PYTHONHOME;
