@@ -98,7 +98,7 @@ python tools/build_electron.py --wheelhouse build/release-wheelhouse
 ```
 
 `--electron-dist` 可指定已经校验官方 SHA256 的 Electron 运行库目录，避免重复下载。
-构建输出位于 `dist/electron-0.4.1`，包括 Inno Setup 安装器、完整目录 ZIP、
+构建输出位于 `dist/electron-<版本>`，包括 Inno Setup 安装器、完整目录 ZIP、
 win-unpacked 测试目录和指纹清单。Electron 45 的 `electron_wer.dll` 须与主 exe 同名
 （`绮录QQ聊天记录导出软件_wer.dll`），构建时保留该配对。
 
@@ -119,6 +119,7 @@ AppContainer 访问权限有问题。使用可供 Windows 沙箱读取程序文�
 安装与卸载由与原项目相同的锁定 Inno Setup 6.7.3 生成；Electron-builder 仅负责
 exe/DLL/resources 目录和 ZIP。NSIS 中间卸载器在本机无法可靠写入临时文件，
 未作为交付方案，也不将失败的 NSIS 中间产物作为安装包提供。
+安装器会在新建的程序目录或默认安装目录设置应用沙箱所需的读取和执行权限。
 
 正式发行在干净提交上运行构建、smoke_electron 和 release_electron；报告绑定清单哈希。
 标签工作流只验证源码与 Electron 流程，最终 Release 从本机已验收的两个文件发布，

@@ -255,7 +255,7 @@ class DesktopTools:
             def export(cancel,progress):
                 source = ResultSource(backend.repo,self.index().iter_hits(query))
                 result = orchestrator.export_chats(source,[info.chat_id for info in source.chats()],replace(options,cancel=cancel))
-                return {"message":f"已导出 {result.messages_total} 条匹配消息"}
+                return {"message":f"已导出 {result.messages_written} 条匹配消息"}
             return self.start("导出全部搜索结果",export)
         if action=="schedule":
             from qqexport.scheduled import prepare

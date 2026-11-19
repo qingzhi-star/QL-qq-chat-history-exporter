@@ -199,6 +199,12 @@ class MessageRepository:
         return [(r[0], r[2]) for r in self._read(chat_id, "AND o.ord>=?", (offset,), limit)
                 if not r[2].is_system]
 
+    def timestamp_at(self, chat_id, offset):
+        with self._lock:
+            row = self._con.execute("SELECT ts FROM ordering WHERE chat=? AND ord=?",
+                                    (chat_id, offset)).fetchone()
+        return messages._as_int(row[0]) if row else None
+
     def iter_messages(self, chat_id, *, after=None):
         cursor = after
         while True:

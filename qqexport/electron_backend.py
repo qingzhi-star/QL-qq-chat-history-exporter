@@ -261,12 +261,16 @@ class DesktopBackend:
             rows = self.repo.window(chat,offset,size)
         output = []
         previous_day = None
-        if offset and not self.demo:
-            previous = self.repo.window(chat,max(0,offset-1),1)
-            if previous:
-                previous_day = datetime.fromtimestamp(previous[-1][1].ts).strftime("%Y-%m-%d")
-        elif offset and self.demo:
-            previous_day = datetime.fromtimestamp(99+offset).strftime("%Y-%m-%d")
+        if offset:
+            if self.demo:
+                previous_ts = 99 + offset
+            elif isinstance(self.repo, MessageRepository):
+                previous_ts = self.repo.timestamp_at(chat, offset - 1)
+            else:
+                previous = self.repo.window(chat, offset - 1, 1)
+                previous_ts = previous[0][1].ts if previous else None
+            if previous_ts is not None:
+                previous_day = datetime.fromtimestamp(previous_ts).strftime("%Y-%m-%d")
         for index,message in rows:
             item = self.message(index,message)
             day = datetime.fromtimestamp(message.ts).strftime("%Y-%m-%d")
@@ -343,7 +347,7 @@ class DesktopBackend:
         report = orchestrator.export_chats(self.repo,[info.chat_id],options)
         self.preferences.formats,self.preferences.last_out = formats,out
         self.preferences.save()
-        return dict(messages=report.messages_total,failed=report.messages_failed,pdf_error=report.pdf_error,
+        return dict(messages=report.messages_written,failed=report.messages_failed,pdf_error=report.pdf_error,
                     directories=report.exported_dirs)
 
     def range(self,chat,start=None,end=None):

@@ -36,6 +36,14 @@ def find_edge(candidates: tuple[Path, ...] | list[Path] | None = None) -> Path |
     return Path(found) if found else None
 
 
+def has_pdf_header(path: Path) -> bool:
+    try:
+        with path.open("rb") as stream:
+            return stream.read(5) == b"%PDF-"
+    except OSError:
+        return False
+
+
 def write_pdf(html_path: Path, out_pdf: Path, *, timeout: int = 600,
               edge: Path | None = None, cancel=None) -> PdfResult:
     check_cancel(cancel)
@@ -80,6 +88,6 @@ def write_pdf(html_path: Path, out_pdf: Path, *, timeout: int = 600,
         return PdfResult(None, f"PDF 生成超时（>{timeout}s），已保留 html")
     except OSError as exc:
         return PdfResult(None, f"Edge 启动失败：{type(exc).__name__}")
-    if not out_pdf.is_file() or not out_pdf.read_bytes()[:4] == b"%PDF":
+    if not has_pdf_header(out_pdf):
         return PdfResult(None, "Edge 未产出有效 PDF，已保留 html")
     return PdfResult(out_pdf)

@@ -234,6 +234,51 @@ def test_all_formats_share_same_selected_snapshot(tmp_path, monkeypatch):
     assert rep.chats_exported == 1 and rep.messages_total == 1
 
 
+def test_sharded_html_keeps_entry_and_pdf_contains_every_message(tmp_path, monkeypatch):
+    src = make_source(tmp_path)
+    shards = orchestrator.html_mod._shards
+    monkeypatch.setattr(orchestrator.html_mod, "_shards",
+                        lambda messages, size: shards(messages, 1 if size == 20_000 else size))
+
+    def fake_pdf(document, output, **kwargs):
+        text = document.read_text(encoding="utf-8")
+        assert "你好" in text and "data:image" in text
+        output.write_bytes(b"%PDF-1.4")
+        return orchestrator.pdf_mod.PdfResult(output)
+
+    monkeypatch.setattr(orchestrator.pdf_mod, "write_pdf", fake_pdf)
+    options = orchestrator.ExportOptions(formats={"html", "pdf"}, out_base=tmp_path / "out",
+                                         require_all_formats=True)
+    report = orchestrator.export_chats(src, ["c2c:u_a"], options)
+    assert report.chats_exported == 1, report.warnings
+    folder = Path(report.exported_dirs[0])
+    pages = sorted(folder.glob("chat-*.html"))
+    assert len(pages) == 2
+    entry = (folder / "chat.html").read_text(encoding="utf-8")
+    assert all(f'href="{page.name}"' in entry for page in pages)
+    assert (folder / "chat.pdf").is_file() and not list(folder.glob(".print-*"))
+
+
+def test_pdf_size_limit_keeps_other_formats_and_never_starts_printer(tmp_path, monkeypatch):
+    src = make_source(tmp_path)
+    monkeypatch.setattr(orchestrator, "_PDF_HTML_LIMIT", 1)
+
+    def unexpected_print(*args, **kwargs):
+        pytest.fail("oversized input reached the PDF printer")
+
+    monkeypatch.setattr(orchestrator.pdf_mod, "write_pdf", unexpected_print)
+    options = orchestrator.ExportOptions(formats={"txt", "pdf"}, out_base=tmp_path / "out")
+    report = orchestrator.export_chats(src, ["c2c:u_a"], options)
+    folder = Path(report.exported_dirs[0])
+    assert report.pdf_error and "128 MiB" in report.pdf_error
+    assert {file.name for file in folder.iterdir()} == {"chat.txt"}
+    options.formats = {"pdf"}
+    blocked = orchestrator.export_chats(src, ["c2c:u_a"], options)
+    assert blocked.messages_total == blocked.messages_failed == 2
+    assert blocked.messages_written == 0 and blocked.consistent
+    assert {file.name for file in folder.iterdir()} == {"chat.txt"}
+
+
 def test_stale_temp_and_backup_dirs_are_cleaned(tmp_path):
     src = make_source(tmp_path)
     out = tmp_path / "out"

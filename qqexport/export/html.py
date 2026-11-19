@@ -62,16 +62,19 @@ document.getElementById('lightbox').addEventListener('click',function(){
 
 MESSAGES_START = b"<!--qqexport:messages:start-->"
 MESSAGES_END = b"<!--qqexport:messages:end-->"
+DEFAULT_SHARD_SIZE = 20_000
 
 
 @dataclass
 class HtmlOptions:
     now: datetime | None = None
     account_uin: str = ""
-    shard_size: int = 20000
+    shard_size: int = DEFAULT_SHARD_SIZE
+    index_name: str = "index.html"
     emoji_map: dict[int, str] = field(default_factory=dict)
     link_files: bool = True
     cancel: object | None = None
+    max_bytes: int | None = None
 
 
 @dataclass
@@ -79,6 +82,10 @@ class HtmlResult:
     files: list[Path]
     messages: int
     shards: int
+
+
+class HtmlSizeLimitExceeded(ValueError):
+    pass
 
 
 def _e(value: object | None) -> str:
@@ -203,29 +210,37 @@ def _header_html(chat: Chat, messages: list[Message], now: datetime,
 def _write_doc(path: Path, chat: Chat, messages: list[Message], now: datetime,
                account: str, nav: str = "",
                emoji: dict[int, str] | None = None,
-               link_files: bool = True, cancel=None) -> None:
-    with open(path, "w", encoding="utf-8") as f:
-        f.write("<!DOCTYPE html>\n<html lang=\"zh-CN\"><head><meta charset=\"utf-8\">")
-        f.write(f"<title>{_e(chat.title)}</title><style>{_CSS}</style></head><body>")
-        f.write(_header_html(chat, messages, now, account))
+               link_files: bool = True, cancel=None, max_bytes: int | None = None) -> None:
+    with path.open("wb") as stream:
+        written = 0
+
+        def write(text: str) -> None:
+            nonlocal written
+            data = text.encode("utf-8")
+            if max_bytes is not None and written + len(data) > max_bytes:
+                raise HtmlSizeLimitExceeded()
+            written += stream.write(data)
+
+        write("<!DOCTYPE html>\n<html lang=\"zh-CN\"><head><meta charset=\"utf-8\">")
+        write(f"<title>{_e(chat.title)}</title><style>{_CSS}</style></head><body>")
+        write(_header_html(chat, messages, now, account))
         if nav:
-            f.write(f'<div id="wrap">{nav}')
+            write(f'<div id="wrap">{nav}')
         else:
-            f.write('<div id="wrap">')
+            write('<div id="wrap">')
         current_day = None
-        f.write(MESSAGES_START.decode("ascii"))
+        write(MESSAGES_START.decode("ascii"))
         for msg in messages:
             check_cancel(cancel)
             day = datetime.fromtimestamp(msg.ts).date()
             if day != current_day:
                 current_day = day
-                f.write(f'<div class="day"><span>{day:%Y-%m-%d}</span></div>')
-            f.write(_msg_html(msg, emoji, link_files))
-        f.write(MESSAGES_END.decode("ascii"))
-        f.write('</div><footer class="no-print">qqexport · 本地离线导出</footer>')
-        f.write('<div id="lightbox"><img id="big" alt=""></div>')
-        f.write(f"<script>{_JS}</script></body></html>")
-        f.flush()
+                write(f'<div class="day"><span>{day:%Y-%m-%d}</span></div>')
+            write(_msg_html(msg, emoji, link_files))
+        write(MESSAGES_END.decode("ascii"))
+        write('</div><footer class="no-print">qqexport · 本地离线导出</footer>')
+        write('<div id="lightbox"><img id="big" alt=""></div>')
+        write(f"<script>{_JS}</script></body></html>")
 
 
 def _shards(messages: list[Message], size: int) -> list[tuple[str, list[Message]]]:
@@ -258,10 +273,11 @@ def write_html(chat: Chat, out_dir: Path, opts: HtmlOptions) -> HtmlResult:
     for name, chunk in chunks:
         path = out_dir / f"{name}.html"
         _write_doc(path, chat, chunk, now, opts.account_uin,
-                   nav if len(chunks) > 1 else "", opts.emoji_map, opts.link_files, opts.cancel)
+                   nav if len(chunks) > 1 else "", opts.emoji_map, opts.link_files,
+                   opts.cancel, opts.max_bytes)
         files.append(path)
     if len(chunks) > 1:
-        index = out_dir / "index.html"
+        index = out_dir / opts.index_name
         links = "".join(f'<li><a href="{name}.html">{name}（{len(chunk)} 条）</a></li>'
                         for name, chunk in chunks)
         index.write_text(

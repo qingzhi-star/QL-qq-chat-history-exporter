@@ -160,7 +160,7 @@ class ExportJob:
                     else:
                         report = orchestrator.export_chats(source,[task.chat_id],self.options)
                         self.last_report = report
-                        task.messages = report.messages_total
+                        task.messages = report.messages_written
                         task.messages_added = report.messages_added
                         if self.options.incremental and report.chats_exported==0 and report.messages_added==0 and "空会话，已跳过" in report.warnings:
                             task.status = "skipped"

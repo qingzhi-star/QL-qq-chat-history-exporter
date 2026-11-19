@@ -47,6 +47,10 @@ class ExportReport:
         return self.messages_total == (self.messages_ok + self.messages_degraded
                                        + self.messages_failed)
 
+    @property
+    def messages_written(self) -> int:
+        return self.messages_ok + self.messages_degraded
+
     def to_json(self) -> dict:
         return asdict(self)
 

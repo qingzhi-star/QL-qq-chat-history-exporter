@@ -43,3 +43,33 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "启动 {#MyAppName}"; Flags: nowait postinstall skipifsilent
+
+[Code]
+var
+  CanSetRuntimePermissions: Boolean;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  ProgramDir: String;
+begin
+  ProgramDir := ExpandConstant('{app}');
+  CanSetRuntimePermissions := not DirExists(ProgramDir) or
+    ((CompareText(ProgramDir, ExpandConstant('{localappdata}\Programs\Qilu')) = 0) and
+      FileExists(AddBackslash(ProgramDir) + '{#MyAppExeName}'));
+  Result := '';
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  ExitCode: Integer;
+begin
+  if (CurStep <> ssPostInstall) or not CanSetRuntimePermissions then
+    Exit;
+  { Electron 的沙箱进程需要读取应用自己的 EXE、DLL 和资源。 }
+  if not Exec(ExpandConstant('{sys}\icacls.exe'),
+      '"' + ExpandConstant('{app}') + '" /grant "*S-1-15-2-1:(OI)(CI)(RX)" /Q',
+      '', SW_HIDE, ewWaitUntilTerminated, ExitCode) then
+    Log('Could not start the runtime ACL setup: ' + SysErrorMessage(ExitCode))
+  else if ExitCode <> 0 then
+    Log('Runtime ACL setup failed with exit code ' + IntToStr(ExitCode));
+end;

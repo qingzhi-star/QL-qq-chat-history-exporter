@@ -18,7 +18,7 @@ class PdfBridge:
                 entry["event"].set()
 
     def render(self,html_path,out_pdf,*,timeout=600,cancel=None,**_):
-        from qqexport.export.pdf import PdfResult
+        from qqexport.export.pdf import PdfResult, has_pdf_header
         check_cancel(cancel)
         identifier = uuid.uuid4().hex
         entry = {"event":threading.Event(),"result":None}
@@ -34,7 +34,7 @@ class PdfBridge:
             check_cancel(cancel)
             result = entry["result"]
             output = Path(out_pdf)
-            if result.get("ok") is not True or not output.is_file() or not output.read_bytes().startswith(b"%PDF-"):
+            if result.get("ok") is not True or not has_pdf_header(output):
                 return PdfResult(None,"PDF 生成失败，请检查保存位置和磁盘空间")
             return PdfResult(output)
         finally:

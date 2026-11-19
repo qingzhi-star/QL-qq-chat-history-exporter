@@ -11,6 +11,7 @@ import mimetypes
 import os
 import re
 import shutil
+import tempfile
 import time
 import urllib.request
 from dataclasses import dataclass, field, replace
@@ -27,6 +28,8 @@ from qqexport.export.session import ChatInfo, ExportSource
 
 ROOT_FOLDER = "QQ聊天记录导出"
 _FORMATS = {"txt", "html", "pdf"}
+_PDF_MESSAGE_LIMIT = 30_000
+_PDF_HTML_LIMIT = 128 * 1024 * 1024
 _INVALID = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 _RESERVED = {"con", "prn", "aux", "nul"} | {f"com{i}" for i in range(1, 10)} | \
             {f"lpt{i}" for i in range(1, 10)}
@@ -95,6 +98,9 @@ def _expand_markdown_images(messages: list[Message], *,
     cache: dict[str, str | None] = {}
     out: list[Message] = []
     for msg in messages:
+        if not any(seg.kind == "markdown" and seg.text for seg in msg.segments):
+            out.append(msg)
+            continue
         segs: list[Segment] = []
         for seg in msg.segments:
             if seg.kind != "markdown" or not seg.text:
@@ -118,6 +124,8 @@ def _expand_markdown_images(messages: list[Message], *,
 
 
 def _relink(messages: list[Message], rel: dict[Path, str]) -> list[Message]:
+    if not rel:
+        return messages
     out = []
     for msg in messages:
         segs = []
@@ -155,6 +163,8 @@ def _fetch_remote_image(url: str,
 
 
 def _inline_images(messages: list[Message], *, allow_network=False, cancel=None) -> list[Message]:
+    if not allow_network:
+        return messages
     remote_cache: dict[str, str | None] = {}
     out: list[Message] = []
     for msg in messages:
@@ -254,6 +264,36 @@ def validate_destination(source, destination):
             raise ValueError("导出目录不能位于 QQ 源数据目录内")
 
 
+def _export_pdf(chat: Chat, work: Path, html_options: html_mod.HtmlOptions,
+                html_result: html_mod.HtmlResult | None, opts: ExportOptions) -> str | None:
+    message_count = len(chat.messages)
+    if message_count > _PDF_MESSAGE_LIMIT and not opts.allow_large_pdf:
+        return f"消息超过 {_PDF_MESSAGE_LIMIT} 条，未生成 PDF"
+    limit = None if opts.allow_large_pdf else _PDF_HTML_LIMIT
+    size_error = "PDF 打印内容超过 128 MiB，请缩小导出范围"
+    output = work / "chat.pdf"
+
+    def print_document(document: Path) -> str | None:
+        if limit is not None and document.stat().st_size > limit:
+            return size_error
+        result = pdf_mod.write_pdf(document, output, edge=opts.edge, cancel=opts.cancel)
+        if not result.ok:
+            output.unlink(missing_ok=True)
+        return result.error
+
+    if html_result is not None and html_result.shards == 1:
+        return print_document(html_result.files[0])
+
+    with tempfile.TemporaryDirectory(prefix=".print-", dir=work) as temporary:
+        print_options = replace(html_options, shard_size=max(1, message_count),
+                                link_files=False, max_bytes=limit)
+        try:
+            document = html_mod.write_html(chat, Path(temporary), print_options).files[0]
+        except html_mod.HtmlSizeLimitExceeded:
+            return size_error
+        return print_document(document)
+
+
 def export_chats(source: ExportSource, chat_ids: list[str],
                  opts: ExportOptions) -> ExportReport:
     if opts.incremental:
@@ -291,17 +331,17 @@ def export_chats(source: ExportSource, chat_ids: list[str],
         messages = []
         for message in source.iter_messages(chat_id):
             check_cancel(opts.cancel)
+            if message.is_system:
+                continue
+            if opts.message_ids is not None and message.msg_id not in opts.message_ids:
+                continue
+            if opts.start_ts is not None and message.ts < opts.start_ts:
+                continue
+            if opts.end_ts is not None and message.ts > opts.end_ts:
+                continue
             messages.append(message)
-        messages = [m for m in messages if not m.is_system]
         messages = _expand_markdown_images(
             messages, fetch=opts.allow_network and bool(formats & {"html", "pdf"}))
-        if opts.message_ids is not None:
-            wanted = set(opts.message_ids)
-            messages = [m for m in messages if m.msg_id in wanted]
-        if opts.start_ts is not None:
-            messages = [m for m in messages if m.ts >= opts.start_ts]
-        if opts.end_ts is not None:
-            messages = [m for m in messages if m.ts <= opts.end_ts]
         refs = [s.media for m in messages for s in m.segments if s.media is not None]
         final = root / folder_name(info)
         work = root / f".tmp-{os.getpid()}-{time.time_ns()}"
@@ -338,28 +378,19 @@ def export_chats(source: ExportSource, chat_ids: list[str],
                 emoji = avatars.add_emoji(relinked, nt_data)
                 chat = Chat(kind=info.kind, peer_id=info.peer, title=info.title,
                             subtitle=info.subtitle, messages=relinked)
-                html_mod.write_html(chat, work, html_mod.HtmlOptions(
+                html_options = html_mod.HtmlOptions(
                     now=now, account_uin=source.meta.get("display_account",source.account_uin),
-                    shard_size=10 ** 9, emoji_map=emoji,
-                    link_files=keep_html,cancel=opts.cancel))
+                    emoji_map=emoji, index_name="chat.html", link_files=keep_html,
+                    cancel=opts.cancel)
+                html_result = html_mod.write_html(chat, work, html_options) if keep_html else None
                 if "pdf" in formats:
-                    if len(messages) > 30000 and not opts.allow_large_pdf:
-                        report.pdf_error = "消息超过 30000 条，未生成 PDF"
-                        report.warnings.append(f"{chat_id}: {report.pdf_error}")
-                    else:
-                        res = pdf_mod.write_pdf(work / "chat.html",
-                                                work / "chat.pdf", edge=opts.edge, cancel=opts.cancel)
-                        if not res.ok:
-                            report.pdf_error = res.error
-                            report.warnings.append(f"{chat_id}: {res.error}")
+                    pdf_error = _export_pdf(chat, work, html_options, html_result, opts)
+                    if pdf_error:
+                        report.pdf_error = pdf_error
+                        report.warnings.append(f"{chat_id}: {pdf_error}")
                 if "txt" in formats:
                     txt_mod.write_txt(chat, work / "chat.txt",
                                       txt_mod.TxtOptions(encoding=opts.encoding,cancel=opts.cancel))
-                if not keep_html:
-                    (work / "chat.html").unlink(missing_ok=True)
-                    media_dir = work / "media"
-                    if media_dir.exists():
-                        shutil.rmtree(media_dir, ignore_errors=True)
 
             produced = any((work / f"chat.{ext}").is_file() for ext in formats)
             complete = all((work / f"chat.{ext}").is_file() for ext in formats)
@@ -375,11 +406,11 @@ def export_chats(source: ExportSource, chat_ids: list[str],
                 raise
             report.warnings.append(f"{chat_id}: {type(exc).__name__}")
 
+        report.messages_total += len(messages)
         if committed:
             report.exported_dirs.append(str(final))
             report.chats_exported += 1
             for m in messages:
-                report.messages_total += 1
                 bad = not m.segments or any(s.kind == "unknown" for s in m.segments)
                 report.messages_degraded += 1 if bad else 0
                 report.messages_ok += 0 if bad else 1
@@ -395,9 +426,8 @@ def export_chats(source: ExportSource, chat_ids: list[str],
                         report.forwards_legacy_rendered += 1
                     if s.kind == "voice":
                         report.voice_raw += 1
-
-    report.messages_failed = max(0, report.messages_total - report.messages_ok
-                                 - report.messages_degraded)
+        else:
+            report.messages_failed += len(messages)
     report.finished_at = datetime.now().isoformat(timespec="seconds")
     report.duration_s = round(time.monotonic() - started, 2)
     return report
