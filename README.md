@@ -4,7 +4,8 @@
 <p align="center">在自己的电脑上浏览、整理和保存属于自己的 QQ 聊天记录。</p>
 
 <p align="center">
-  <a href="https://github.com/qingzhi-star/QL-qq-chat-history-exporter/releases/latest">下载正式版</a> ·
+  <a href="https://apps.microsoft.com/detail/9NDWF45FT82V">Microsoft Store</a> ·
+  <a href="https://github.com/qingzhi-star/QL-qq-chat-history-exporter/releases/latest">GitHub 下载</a> ·
   <a href="#快速开始">快速开始</a> ·
   <a href="#离线使用">离线使用</a> ·
   <a href="https://qingzhi-star.github.io/QL-qq-chat-history-exporter/">项目主页</a> ·
@@ -59,7 +60,7 @@ PDF 使用软件内置的打印引擎，桌面端导出不需要额外安装浏�
 
 ## 下载与安装
 
-前往 **[正式版下载](https://github.com/qingzhi-star/QL-qq-chat-history-exporter/releases/latest)**，选择 Windows x64 的分发文件。
+可通过 **[Microsoft Store](https://apps.microsoft.com/detail/9NDWF45FT82V)** 安装绮录。需要独立安装包或便携版时，前往 **[GitHub Releases](https://github.com/qingzhi-star/QL-qq-chat-history-exporter/releases/latest)** 下载。
 
 | 下载文件 | 使用方法 |
 | --- | --- |
