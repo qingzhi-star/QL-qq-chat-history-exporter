@@ -124,3 +124,18 @@ exe/DLL/resources 目录和 ZIP。NSIS 中间卸载器在本机无法可靠写�
 正式发行在干净提交上运行构建、smoke_electron 和 release_electron；报告绑定清单哈希。
 标签工作流只验证源码与 Electron 流程，最终 Release 从本机已验收的两个文件发布，
 避免 CI 重建产生未经真机验收的替代资产。详见 release-checklist.md。
+
+## 手动检查更新
+
+对应源码及其后续构建提供下列显式命令。
+
+```powershell
+python -m qqexport.cli check-updates
+# 自带运行库的发行包，从主程序所在目录执行
+.\resources\core\qilu-core.exe --check-updates
+```
+
+命令仅读取官方 GitHub 仓库的公开发行记录，版本比较在本机进行。正式版比较正式发布，
+候选版同时比较正式版和候选版。内置内核检测到 Windows 应用包身份时，提示前往
+Microsoft Store 检查更新。检查不读取 QQ 数据，不自动下载或安装更新。GitHub 会接收
+访问 IP、请求时间和请求头等网络信息。桌面入口与对应的隐私说明随 P4 的桌面交付一起验收。

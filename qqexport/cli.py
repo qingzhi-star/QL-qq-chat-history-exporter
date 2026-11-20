@@ -71,6 +71,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub = p.add_subparsers(dest="command", required=True)
 
     sub.add_parser("version", help="打印版本号")
+    sub.add_parser("check-updates", help="检查官方发布渠道是否有更新")
     scheduled = sub.add_parser("scheduled-run",help="运行显式准备的单次计划（不注册任务）")
     scheduled.add_argument("plan",type=Path)
 
@@ -528,6 +529,9 @@ def _dispatch(args) -> int:
     if args.command == "version":
         print(f"qqexport {__version__}")
         return EXIT_OK
+    if args.command == "check-updates":
+        from .updates import print_update_status
+        return EXIT_OK if print_update_status(__version__) else EXIT_FAIL
     if args.command == "doctor":
         return _cmd_doctor(args)
     if args.command == "list":
