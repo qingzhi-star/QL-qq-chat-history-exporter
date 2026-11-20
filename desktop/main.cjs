@@ -7,7 +7,7 @@ const { PrivacyGate } = require('./privacy.cjs');
 const NAME = '绮录QQ聊天记录导出软件';
 const ROOT = path.resolve(__dirname, '..');
 const DEVELOPMENT_PYTHON = process.env.QILU_PYTHON || 'python';
-let window, core, outputDirectory, quitting = false;
+let window, core, outputDirectory, updatePage, updateRequest, quitting = false;
 let privacy;
 try{privacy=PrivacyGate.load(__dirname,app.isPackaged?path.join(__dirname,'privacy.md'):path.join(ROOT,'privacy.md'));}
 catch{/* 资源损坏时在应用就绪后给出可读提示，绝不启动数据内核。 */}
@@ -108,10 +108,28 @@ app.whenReady().then(async () => {
     validate(event);
     const actions = new Set(['batch','queueState','queueCancel','queueRetry','queueResume','archiveCreate',
       'archiveOpen','archiveVerify','libraryImport','libraryAccounts','libraryOpen','libraryClear','cacheClear',
-      'missing','settingsGet','settingsSave','searchClear','searchHistory','searchExport','schedule']);
+      'missing','settingsGet','settingsSave','searchClear','searchHistory','searchExport','schedule',
+      'checkUpdates','openUpdatePage','presetSave','presetApply','presetRemove']);
     if (!params || !actions.has(params.action)) throw new Error('不支持的工具操作');
     const safe = {...params}; delete safe.path; delete safe.out;
     const action = safe.action;
+    if (action === 'checkUpdates') {
+      updatePage = undefined;
+      if (!updateRequest) {
+        updateRequest = core.call('tool', {action}).finally(() => { updateRequest = undefined; });
+      }
+      const result = await updateRequest;
+      if (result.status === 'store') {
+        updatePage = 'https://apps.microsoft.com/detail/9NDWF45FT82V';
+      } else if (result.status === 'available' && /^\d+\.\d+\.\d+(?:rc[1-9]\d*)?$/.test(result.version)) {
+        updatePage = `https://github.com/qingzhi-star/QL-qq-chat-history-exporter/releases/tag/v${result.version}`;
+      }
+      return result;
+    }
+    if (action === 'openUpdatePage') {
+      if (!updatePage) throw new Error('请先检查更新');
+      return shell.openExternal(updatePage);
+    }
     const open = ['archiveOpen','archiveVerify','libraryImport','queueResume'].includes(action);
     const save = ['archiveCreate','schedule'].includes(action);
     if (open || save) {
@@ -143,7 +161,10 @@ app.whenReady().then(async () => {
       delete safe.last_out;
       if(outputDirectory)safe.last_out=outputDirectory;
     }
-    return core.call('tool',safe);
+    if (action === 'presetSave') safe.directory = outputDirectory;
+    const result = await core.call('tool',safe);
+    if (action === 'presetApply') outputDirectory = result.last_out;
+    return result;
   });
   ipcMain.on('window', (event, action) => {
     if (!senderAllowed(event)) return;

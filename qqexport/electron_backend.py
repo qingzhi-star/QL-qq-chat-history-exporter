@@ -46,7 +46,9 @@ class DesktopBackend:
         self.allow_avatars = os.environ.get("QILU_ALLOW_AVATARS")=="1"
         self.preferences = config.Config.load()
         from qqexport.desktop_tools import DesktopTools
+        from qqexport.updates import UpdateChecker
         self.tools = DesktopTools(self)
+        self.update_checker = UpdateChecker()
 
     def close(self):
         with self.lock:
@@ -348,7 +350,7 @@ class DesktopBackend:
         self.preferences.formats,self.preferences.last_out = formats,out
         self.preferences.save()
         return dict(messages=report.messages_written,failed=report.messages_failed,pdf_error=report.pdf_error,
-                    directories=report.exported_dirs)
+                    directories=report.exported_dirs,format_results=report.format_results.get(info.chat_id, {}))
 
     def range(self,chat,start=None,end=None):
         self.check_chat(chat)
@@ -409,6 +411,12 @@ class DesktopBackend:
             return self.refresh(**params)
         if method=="tool" and params.get("action") in {"queueState","queueCancel"}:
             return self.tools.call(**params)
+        if method == "tool" and params.get("action") == "checkUpdates":
+            result = self.update_checker.check(__version__)
+            release = result.release
+            return dict(status=result.status, current=result.current,
+                        version=release.version if release else None,
+                        notes=release.notes if release else "")
         if self.tools.busy:
             if method=="refresh":
                 return None

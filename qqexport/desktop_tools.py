@@ -223,6 +223,35 @@ class DesktopTools:
             return dict(rows=rows,more=False)
         if action=="settingsGet":
             return asdict(backend.preferences)
+        if action in {"presetSave", "presetApply", "presetRemove"}:
+            name = params.get("name")
+            if not isinstance(name, str) or not name.strip() or len(name.strip()) > 60:
+                raise UserError("请输入 1–60 字的预设名称")
+            name = name.strip()
+            current = backend.preferences
+            presets = dict(current.export_presets)
+            preset = presets.get(name)
+            if action != "presetSave" and preset is None:
+                raise UserError("该预设不存在")
+            if action == "presetSave":
+                formats = params.get("formats")
+                if not isinstance(formats, list) or not formats or any(
+                        not isinstance(value, str) or value not in {"txt", "html", "pdf"} for value in formats):
+                    raise UserError("请至少选择一种有效格式")
+                directory = params.get("directory") or current.last_out
+                if not directory or not Path(directory).is_dir():
+                    raise UserError("请先选择可用的保存目录")
+                presets[name] = dict(formats=list(dict.fromkeys(formats)), directory=directory)
+            elif action == "presetRemove":
+                del presets[name]
+            else:
+                if not Path(preset["directory"]).is_dir():
+                    raise UserError("预设目录已不可用，请重新选择目录并保存该预设")
+                current = replace(current, formats=preset["formats"], last_out=preset["directory"])
+            value = replace(current, export_presets=presets)
+            value.save()
+            backend.preferences = value
+            return asdict(value)
         if action=="settingsSave":
             values = {key:params[key] for key in ("formats","density","thumbnail_mb","last_out") if key in params}
             value = replace(backend.preferences,**values)

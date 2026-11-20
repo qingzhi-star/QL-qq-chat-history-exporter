@@ -39,6 +39,8 @@ const os=require('node:os');
     assert.equal(hits.length,1);
     const result=await done(await call({action:'batch',chats:[chat.id],formats:['txt','html','pdf']}));
     assert.equal(result.tasks[0].status,'done',result.tasks[0].error);
+    assert.deepEqual(Object.keys(result.tasks[0].format_results).sort(),['html','pdf','txt']);
+    assert.ok(Object.values(result.tasks[0].format_results).every(outcome=>outcome.status==='written'));
     async function find(directory,name){
       for(const entry of await fs.readdir(directory,{withFileTypes:true})){
         const target=path.join(directory,entry.name);

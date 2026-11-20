@@ -54,6 +54,33 @@ def test_desktop_media_tokens_are_scoped_and_failures_keep_session(tmp_path,monk
         value.close()
 
 
+def test_export_preset_migrates_and_does_not_apply_a_missing_directory(tmp_path, monkeypatch):
+    import pytest
+    from qqexport.config import Config, config_path
+    from qqexport.errors import UserError
+
+    value = backend(tmp_path, monkeypatch)
+    directory = tmp_path / "preset-dir"
+    directory.mkdir()
+    try:
+        config_path().parent.mkdir()
+        config_path().write_text('{"formats":["html"],"last_account":"12345"}', encoding="utf-8")
+        value.preferences = Config.load()
+        assert not value.preferences.export_presets
+        value.dispatch("tool", dict(action="presetSave", name="离线备份", formats=["pdf", "txt"], directory=str(directory)))
+        assert value.preferences.formats == ["html"]
+        value.dispatch("tool", dict(action="presetApply", name="离线备份"))
+        assert Config.load().formats == ["pdf", "txt"]
+        assert Config.load().last_account == "12345"
+        directory.rmdir()
+        original = config_path().read_bytes()
+        with pytest.raises(UserError, match="预设目录已不可用"):
+            value.dispatch("tool", dict(action="presetApply", name="离线备份"))
+        assert config_path().read_bytes() == original
+    finally:
+        value.close()
+
+
 def test_desktop_pipe_protocol_and_clean_exit(tmp_path,monkeypatch):
     import os
     monkeypatch.setenv("QQEXPORT_HOME",str(tmp_path/"home"))

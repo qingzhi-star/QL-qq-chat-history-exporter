@@ -37,6 +37,7 @@ class ChatTask:
     messages_added: int | None = None
     error: str | None = None
     files: list[dict] = field(default_factory=list)
+    format_results: dict[str, dict[str, str]] = field(default_factory=dict)
 
 
 class ExportJob:
@@ -114,6 +115,7 @@ class ExportJob:
         for task in self.tasks:
             if task.status in {"failed","cancelled"}:
                 task.status,task.error = "pending",None
+                task.format_results = {}
 
     def run(self, source, progress=None):
         if account_hash(source.account_uin)!=self.account:
@@ -136,6 +138,7 @@ class ExportJob:
                 if task.status!="pending":
                     continue
                 task.status,task.error = "running",None
+                task.format_results = {}
                 task.attempts += 1
                 self._record(progress)
                 try:
@@ -162,19 +165,22 @@ class ExportJob:
                         self.last_report = report
                         task.messages = report.messages_written
                         task.messages_added = report.messages_added
+                        task.format_results = report.format_results.get(task.chat_id, {})
                         if self.options.incremental and report.chats_exported==0 and report.messages_added==0 and "空会话，已跳过" in report.warnings:
                             task.status = "skipped"
-                            self._record(progress)
-                            continue
-                        if report.chats_exported!=1 or report.pdf_error:
+                        elif report.chats_exported!=1 or report.pdf_error:
                             task.error = report.pdf_error or "导出失败，请检查输出目录和磁盘空间"
                             raise JobError("会话导出未完整成功")
-                        task.files = self._files(report.exported_dirs)
-                        task.status = "done"
+                        else:
+                            task.files = self._files(report.exported_dirs)
+                            task.status = "done"
                 except ExportCancelled:
                     task.status,task.error = "cancelled","已取消"
                 except Exception as exc:
                     task.status,task.error = "failed",task.error or (str(exc) if isinstance(exc,UserError) else type(exc).__name__)
+                if not task.format_results and task.status in {"cancelled", "failed", "skipped"}:
+                    task.format_results = {fmt: {"status": task.status, "reason": task.error or "本会话没有可导出的消息"}
+                                           for fmt in sorted(self.options.formats)}
                 self._record(progress)
                 if self.cancel.is_set():
                     break
@@ -230,6 +236,13 @@ class ExportJob:
                 if task.messages_added is not None and (type(task.messages_added) is not int or task.messages_added<0):
                     raise ValueError
                 task.files = record["files"]
+                outcomes = record.get("format_results", {})
+                if not isinstance(outcomes, dict) or any(
+                        fmt not in opts.formats or not isinstance(result, dict)
+                        or result.get("status") not in {"written", "degraded", "failed", "cancelled", "skipped"}
+                        or not isinstance(result.get("reason"), str) for fmt, result in outcomes.items()):
+                    raise ValueError
+                task.format_results = outcomes if task.status != "pending" else {}
                 if not isinstance(task.files,list) or not isinstance(task.chat_id,str):
                     raise ValueError
                 if any(type(v) is not int or v<0 for v in (task.attempts,task.messages)):

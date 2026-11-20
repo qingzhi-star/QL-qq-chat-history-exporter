@@ -1,5 +1,5 @@
 import { MessageList } from './virtual.js';
-import { initTools } from './tools.js';
+import { initTools, formatResultText } from './tools.js';
 const $ = id => document.getElementById(id);
 const api = window.qilu;
 let state = null, current = null, selecting = false, allSelected = false;
@@ -276,7 +276,7 @@ $('do-export').addEventListener('click',()=>run(async()=>{
     const result=await api.export({chat:current.id,formats:choices,selected:[...selected],all_messages:allSelected,excluded:[...excluded],...(dates||{})});
     if(result.canceled){$('export-progress').textContent='已取消选择保存位置';return;}
     formats.clear();choices.forEach(format=>formats.add(format));
-    $('export-progress').textContent=`已导出 ${result.messages} 条消息。${result.failed ? `${result.failed} 条失败。` : ''}${result.pdf_error || ''}`;
+    $('export-progress').textContent=`已导出 ${result.messages} 条消息。${result.failed ? `${result.failed} 条失败。` : ''}${formatResultText(result.format_results) || result.pdf_error || ''}`;
   } finally { $('do-export').disabled=false; $('cancel-export').disabled=false; }
 }));
 $('search').addEventListener('click',()=>{$('search-dialog').showModal();$('search-query').focus();run(async()=>{

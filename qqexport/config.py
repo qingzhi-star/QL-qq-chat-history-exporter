@@ -53,6 +53,7 @@ class Config:
     window_state: str = "normal"
     thumbnail_mb: int = 2048
     density: str = "normal"
+    export_presets: dict[str, dict] = field(default_factory=dict)
 
     def _validate(self) -> None:
         if (any(v is not None and not isinstance(v, str)
@@ -68,6 +69,15 @@ class Config:
                 or not isinstance(self.density,str) or self.density not in {"normal","compact"}
                 or type(self.thumbnail_mb) is not int or not 0<=self.thumbnail_mb<=16384):
             raise ConfigError("config.json 界面设置无效，原文件未修改；请备份后恢复默认设置。")
+        if not isinstance(self.export_presets, dict):
+            raise ConfigError("config.json 导出预设无效，原文件未修改。")
+        for name, preset in self.export_presets.items():
+            if (not isinstance(name, str) or not name.strip() or len(name) > 60
+                    or not isinstance(preset, dict) or not isinstance(preset.get("directory"), str)
+                    or not preset["directory"] or not isinstance(preset.get("formats"), list)
+                    or not preset["formats"] or any(not isinstance(value, str) or value not in {"txt", "html", "pdf"}
+                                                   for value in preset["formats"])):
+                raise ConfigError("config.json 导出预设无效，原文件未修改。")
 
     @classmethod
     def load(cls, path: Path | None = None) -> "Config":

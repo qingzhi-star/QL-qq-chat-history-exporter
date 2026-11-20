@@ -55,3 +55,7 @@ Python/Node 为随包内核与运行库，用户无需另行安装。PDF 使用 
 | 真实 QQ 数据、前台性能 | 当前构建尚无授权真机样本和目标前台环境的结果。 | 未验证 |
 
 当前候选版的发布范围为 Windows 11 x64。普通回归、Windows Python 矩阵和 Electron 验证可查阅 [GitHub Actions](https://github.com/qingzhi-star/QL-qq-chat-history-exporter/actions/runs/44496705350)。
+
+## Electron 0.4.1 正式版
+
+2026-11-20 对源码提交 `304771c` 的发行包验收。Windows 11 x64 通过中文与空格路径启动、安装及卸载、隐私选择和离线 TXT／HTML／PDF 导出。测试限制应用进程的系统运行库搜索路径，验证随包内核与合成源数据只读。Windows 10 和真实 QQ 数据仍待同构建验收。[正式版](https://github.com/qingzhi-star/QL-qq-chat-history-exporter/releases/tag/v0.4.1) · [对应源码 CI](https://github.com/qingzhi-star/QL-qq-chat-history-exporter/actions/runs/44746708500)

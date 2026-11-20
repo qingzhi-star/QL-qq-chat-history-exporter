@@ -127,7 +127,7 @@ exe/DLL/resources 目录和 ZIP。NSIS 中间卸载器在本机无法可靠写�
 
 ## 手动检查更新
 
-对应源码及其后续构建提供下列显式命令。
+P4 桌面开发版在「更多功能 → 检查更新」提供显式检查。源码及对应构建也支持命令行。
 
 ```powershell
 python -m qqexport.cli check-updates
@@ -138,4 +138,4 @@ python -m qqexport.cli check-updates
 命令仅读取官方 GitHub 仓库的公开发行记录，版本比较在本机进行。正式版比较正式发布，
 候选版同时比较正式版和候选版。内置内核检测到 Windows 应用包身份时，提示前往
 Microsoft Store 检查更新。检查不读取 QQ 数据，不自动下载或安装更新。GitHub 会接收
-访问 IP、请求时间和请求头等网络信息。桌面入口与对应的隐私说明随 P4 的桌面交付一起验收。
+访问 IP、请求时间和请求头等网络信息。[隐私条款](../privacy.md)

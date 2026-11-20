@@ -78,6 +78,7 @@ def read_manifest(folder):
             raise ValueError
         stats = data["stats"]
         if (any(type(stats[k]) is not int or stats[k]<0 for k in ("total","ok","degraded"))
+                or type(stats.get("missing_media", 0)) is not int or stats.get("missing_media", 0) < 0
                 or not stats["total"] or stats["total"]!=stats["ok"]+stats["degraded"]
                 or type(data["source_count"]) is not int or data["source_count"]<stats["total"]
                 or not isinstance(stats["kinds"],dict)):
@@ -123,6 +124,7 @@ def _files(folder,cancel):
 
 def _stats(messages,previous=None):
     stats = dict(previous or {"total":0,"ok":0,"degraded":0,"kinds":{}})
+    stats["missing_media"] = stats.get("missing_media", 0)
     stats["kinds"] = dict(stats.get("kinds",{}))
     for message in messages:
         stats["total"] += 1
@@ -130,14 +132,22 @@ def _stats(messages,previous=None):
         stats["degraded" if degraded else "ok"] += 1
         for segment in message.segments:
             stats["kinds"][segment.kind] = stats["kinds"].get(segment.kind,0)+1
+            if segment.media and segment.media.missing and not segment.media.data_uri:
+                stats["missing_media"] += 1
     return stats
 
 
-def _report(source,final,stats,added,now):
+def _report(source,final,stats,added,now,chat_id,formats):
+    outcomes = {}
+    for fmt in sorted(formats):
+        reasons = ["含未解析消息，已保留类型占位"] if stats["degraded"] else []
+        if fmt in {"html", "pdf"} and stats.get("missing_media", 0):
+            reasons.append("部分媒体未缓存，已保留缺失提示")
+        outcomes[fmt] = {"status": "degraded" if reasons else "written", "reason": " · ".join(reasons)}
     return ExportReport(started_at=now.isoformat(),finished_at=datetime.now().isoformat(),
         uin=source.account_uin,chats_requested=1,chats_exported=1,messages_total=stats["total"],
         messages_ok=stats["ok"],messages_degraded=stats["degraded"],messages_added=added,
-        segments_by_kind=stats["kinds"],exported_dirs=[str(final)])
+        segments_by_kind=stats["kinds"],exported_dirs=[str(final)],format_results={chat_id: outcomes})
 
 
 def export_chat(repo,chat_id,opts):
@@ -207,7 +217,7 @@ def export_chat(repo,chat_id,opts):
             check_cancel(opts.cancel)
             new_messages.append(message)
         if old is not None and not new_messages:
-            return _report(repo,final,old["stats"],0,now)
+            return _report(repo,final,old["stats"],0,now,chat_id,formats)
         if not new_messages:
             return ExportReport(chats_requested=1,messages_added=0,warnings=["空会话，已跳过"])
         work = root/f".tmp-{os.getpid()}-{time.time_ns()}"
@@ -286,7 +296,7 @@ def export_chat(repo,chat_id,opts):
                 verify_files(final,old,opts.cancel)  # 发布前再查旧产物，避免并发编辑被悄悄覆盖。
             check_cancel(opts.cancel)
             orchestrator._commit_dir(work,final)
-            return _report(repo,final,stats,len(new_messages),now)
+            return _report(repo,final,stats,len(new_messages),now,chat_id,formats)
         finally:
             if work.exists():
                 shutil.rmtree(work)
@@ -305,6 +315,7 @@ def export_incremental(source,chat_ids,opts):
                 setattr(result,key,getattr(result,key)+getattr(report,key))
             result.exported_dirs.extend(report.exported_dirs)
             result.warnings.extend(report.warnings)
+            result.format_results.update(report.format_results)
             for kind,count in report.segments_by_kind.items():
                 result.segments_by_kind[kind] = result.segments_by_kind.get(kind,0)+count
         return result

@@ -1,3 +1,9 @@
+export function formatResultText(outcomes) {
+  const labels = {written:'已写入',degraded:'已写入，有缺失内容',failed:'失败',cancelled:'已取消',skipped:'已跳过'};
+  return Object.entries(outcomes || {}).map(([format, result]) =>
+    `${format.toUpperCase()} ${labels[result.status] || result.status}${result.reason ? `（${result.reason}）` : ''}`).join(' · ');
+}
+
 export function initTools(hooks) {
   const {api,getState,getCurrent,applyState,onError,setBusy,clearResources,refreshMessages}=hooks;
   const $=id=>document.getElementById(id);
@@ -92,6 +98,30 @@ export function initTools(hooks) {
     const getFormats=formatChoices(body,preferences.formats);
     const output=element('p','muted',preferences.last_out||getState()?.out||'未选择默认目录');body.append(output);
     button('选择默认保存目录',async()=>{const path=await api.chooseFolder();if(path)output.textContent=path;},false,body);
+    const presets = Object.entries(preferences.export_presets || {}).map(([name, preset]) =>
+      [name, `${name} · ${preset.formats.map(value => value.toUpperCase()).join(' / ')}`]);
+    const preset = field(body, '导出预设', {choices:[['', '选择预设'], ...presets]});
+    const presetName = field(body, '预设名称');
+    presetName.maxLength = 60;
+    preset.addEventListener('change', () => { presetName.value = preset.value; });
+    const presetActions = element('div', 'tool-checks');
+    body.append(presetActions);
+    async function changePreset(action, extra={}) {
+      const name = presetName.value.trim();
+      if (!name) throw new Error('请填写或选择预设名称');
+      const result = await request({action, name, ...extra});
+      if (action === 'presetApply') {
+        const state = getState();
+        if (state) { state.formats = result.formats; state.out = result.last_out; }
+        refreshMessages(result);
+        $('output-folder').textContent = result.last_out;
+      }
+      await settings();
+      $('tool-message').textContent = action === 'presetApply' ? '预设已应用' : action === 'presetRemove' ? '预设已删除' : '预设已保存';
+    }
+    button('保存预设', () => changePreset('presetSave', {formats:getFormats()}), false, presetActions);
+    button('应用预设', () => changePreset('presetApply'), false, presetActions);
+    button('删除预设', () => changePreset('presetRemove'), false, presetActions);
     const density=field(body,'消息密度',{value:preferences.density,choices:[['normal','标准'],['compact','紧凑']]}),limit=field(body,'缩略图磁盘上限（MiB，0 表示不保存）',{type:'number',value:preferences.thumbnail_mb});
     limit.min='0';limit.max=String(16*1024);
     cancel();button('保存设置',async()=>{
@@ -118,6 +148,37 @@ export function initTools(hooks) {
     body.append(element('p','muted','生成默认禁用的 XML 和计划 JSON。请在 Windows 任务计划程序中核对后导入启用。移动软件后需重新生成。'));
     cancel();button('生成计划文件',()=>{if(!getChats().length||!getFormats().length)throw new Error('请选择会话和导出格式');return request({action:'schedule',chats:getChats(),formats:getFormats(),clock:clock.value});},true);
   }
+  function updates() {
+    const body = form(dialog('检查更新'));
+    const summary = element('p', 'muted', '检查时将访问官方发行渠道。');
+    const notes = element('div', 'muted');
+    body.append(summary, notes);
+    cancel();
+    const releasePage = button('打开官方页面', async () => {
+      try { await request({action:'openUpdatePage'}); }
+      finally { $('tool-message').textContent = ''; }
+    });
+    releasePage.hidden = true;
+    button('检查更新', async () => {
+      releasePage.hidden = true;
+      notes.replaceChildren();
+      let result;
+      try { result = await request({action:'checkUpdates'}); }
+      finally { $('tool-message').textContent = ''; }
+      const messages = {
+        available: `当前 v${result.current}，发现新版本 v${result.version}。`,
+        current: `当前已是该渠道的最新版本 v${result.current}。`,
+        ahead: `当前 v${result.current} 高于渠道版本 v${result.version}。`,
+        store: `当前 v${result.current}。请通过 Microsoft Store 的库检查更新。`,
+      };
+      summary.textContent = messages[result.status] || '更新状态不可用';
+      if (result.status === 'available' && result.notes) {
+        for (const line of result.notes.split('\n')) notes.append(element('div', '', line));
+      }
+      releasePage.textContent = result.status === 'store' ? '打开 Microsoft Store' : '打开官方发布页';
+      releasePage.hidden = !['available', 'store'].includes(result.status);
+    }, true);
+  }
   async function poll(){
     if(polling)return;polling=true;
     try{
@@ -131,7 +192,7 @@ export function initTools(hooks) {
       $('job-progress').replaceChildren();
       if(tasks.length){const table=element('table','progress-table');const head=element('tr');for(const title of ['会话','状态','消息数','原因'])head.append(element('th','',title));table.append(head);
         const names=new Map((getState()?.chats||[]).map(chat=>[chat.id,chat.title]));
-        for(const task of tasks){const row=element('tr');for(const value of [names.get(task.chat_id)||task.chat_id,({pending:'等待',running:'导出中',done:'成功',failed:'失败',cancelled:'已取消',skipped:'已跳过'})[task.status]||task.status,String(task.messages)+(task.messages_added==null?'':` (+${task.messages_added})`),task.error||''])row.append(element('td','',value));table.append(row);}$('job-progress').append(table);}
+        for(const task of tasks){const row=element('tr');for(const value of [names.get(task.chat_id)||task.chat_id,({pending:'等待',running:'导出中',done:'成功',failed:'失败',cancelled:'已取消',skipped:'已跳过'})[task.status]||task.status,String(task.messages)+(task.messages_added==null?'':` (+${task.messages_added})`),formatResultText(task.format_results)||task.error||''])row.append(element('td','',value));table.append(row);}$('job-progress').append(table);}
       if(!job.running && job.result?.state && lastApplied!==job.id){lastApplied=job.id;applyState(job.result.state);}
       if(job.running)setTimeout(()=>attempt(poll),350);
     }finally{polling=false;}
@@ -148,6 +209,7 @@ export function initTools(hooks) {
     if(action==='settings'){await settings();return;}
     if(action==='missing'){await missing();return;}
     if(action==='schedule'){schedule();return;}
+    if(action==='checkUpdates'){updates();return;}
     if(action==='queueState'){if(!$('job-dialog').open)$('job-dialog').showModal();await poll();return;}
     dialog(action==='cacheClear'?'清理图片缓存':action==='libraryClear'?'清空本机资料库':'恢复导出队列');
     cancel();button('继续',async()=>{const result=await request({action});if(action==='cacheClear'&&result&&!result.canceled)clearResources();},true);

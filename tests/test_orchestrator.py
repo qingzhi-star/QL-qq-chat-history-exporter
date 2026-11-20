@@ -272,6 +272,8 @@ def test_pdf_size_limit_keeps_other_formats_and_never_starts_printer(tmp_path, m
     folder = Path(report.exported_dirs[0])
     assert report.pdf_error and "128 MiB" in report.pdf_error
     assert {file.name for file in folder.iterdir()} == {"chat.txt"}
+    assert report.format_results["c2c:u_a"]["txt"]["status"] == "written"
+    assert report.format_results["c2c:u_a"]["pdf"] == {"status": "failed", "reason": report.pdf_error}
     options.formats = {"pdf"}
     blocked = orchestrator.export_chats(src, ["c2c:u_a"], options)
     assert blocked.messages_total == blocked.messages_failed == 2

@@ -29,7 +29,8 @@ const os = require('node:os');
     const denied=await page.evaluate(async()=>Promise.all([
       ()=>window.qilu.boot(),()=>window.qilu.refresh(),()=>window.qilu.messages({chat:'synthetic'}),
       ()=>window.qilu.media({token:'synthetic'}),()=>window.qilu.export({}),
-      ()=>window.qilu.tool({action:'settingsGet'}),()=>window.qilu.chooseFolder(),()=>window.qilu.openOutput()
+      ()=>window.qilu.tool({action:'settingsGet'}),()=>window.qilu.tool({action:'checkUpdates'}),
+      ()=>window.qilu.chooseFolder(),()=>window.qilu.openOutput()
     ].map(async call=>{try{await call();return false;}catch(error){return error.message.includes('隐私条款');}})));
     assert.ok(denied.every(Boolean));
     await page.locator('#privacy-policy-version').filter({hasText:'条款版本'}).waitFor();
@@ -161,6 +162,40 @@ const os = require('node:os');
     await page.locator('#tool-actions button').filter({hasText:'取消'}).click();
     await page.locator('#more').click();await page.locator('[data-tool="settings"]').click();
     await page.locator('#tool-title').filter({hasText:'软件设置'}).waitFor();
+    await app.evaluate(({dialog}, directory) => {
+      dialog.showOpenDialog = async () => ({canceled:false,filePaths:[directory]});
+    }, home);
+    await page.getByRole('button',{name:'选择默认保存目录'}).click();
+    await page.getByLabel('预设名称').fill('离屏验收');
+    await page.getByRole('button',{name:'保存预设'}).click();
+    await page.locator('#tool-message').filter({hasText:'预设已保存'}).waitFor();
+    await page.getByLabel('导出预设').selectOption('离屏验收');
+    await page.getByRole('button',{name:'应用预设'}).click();
+    await page.locator('#tool-message').filter({hasText:'预设已应用'}).waitFor();
+    assert.equal(await page.locator('#output-folder').textContent(), home);
+    await page.locator('#tool-actions button').filter({hasText:'取消'}).click();
+    await app.evaluate(({app,shell})=>{
+      const requireMain=process.getBuiltinModule('module').createRequire(process.getBuiltinModule('path').join(app.getAppPath(),'package.json'));
+      const {CoreBridge}=requireMain('./bridge.cjs');
+      const call=CoreBridge.prototype.call;
+      globalThis.qiluUpdatesProbe={calls:0};
+      CoreBridge.prototype.call=function(method,params){
+        if(method==='tool' && params.action==='checkUpdates'){
+          globalThis.qiluUpdatesProbe.calls++;
+          return Promise.resolve({status:'available',current:'0.4.2rc2',version:'0.5.0',notes:'离屏更新说明'});
+        }
+        return call.call(this,method,params);
+      };
+      shell.openExternal=async url=>{globalThis.qiluUpdatesProbe.url=url;};
+    });
+    await page.locator('#more').click();await page.locator('[data-tool="checkUpdates"]').click();
+    assert.equal(await app.evaluate(()=>globalThis.qiluUpdatesProbe.calls),0);
+    await page.getByRole('button',{name:'检查更新',exact:true}).click();
+    await page.locator('#tool-body').filter({hasText:'离屏更新说明'}).waitFor();
+    await page.getByRole('button',{name:'打开官方发布页'}).click();
+    assert.deepEqual(await app.evaluate(()=>globalThis.qiluUpdatesProbe),{
+      calls:1,url:'https://github.com/qingzhi-star/QL-qq-chat-history-exporter/releases/tag/v0.5.0',
+    });
     await page.locator('#tool-actions button').filter({hasText:'取消'}).click();
     await page.locator('#more').click();await page.locator('[data-tool="queueState"]').click();
     await page.locator('#job-message').filter({hasText:'当前没有任务'}).waitFor();

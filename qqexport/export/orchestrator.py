@@ -357,6 +357,9 @@ def export_chats(source: ExportSource, chat_ids: list[str],
         final = root / folder_name(info)
         work = root / f".tmp-{os.getpid()}-{time.time_ns()}"
         committed = False
+        produced_formats = set()
+        failure = "未生成文件，请检查保存位置和磁盘空间"
+        pdf_error = None
         try:
             work.mkdir(parents=True)
             if formats == {"txt"}:
@@ -403,9 +406,8 @@ def export_chats(source: ExportSource, chat_ids: list[str],
                     txt_mod.write_txt(chat, work / "chat.txt",
                                       txt_mod.TxtOptions(encoding=opts.encoding,cancel=opts.cancel))
 
-            produced = any((work / f"chat.{ext}").is_file() for ext in formats)
-            complete = all((work / f"chat.{ext}").is_file() for ext in formats)
-            if produced and (complete or not opts.require_all_formats):
+            produced_formats = {ext for ext in formats if (work / f"chat.{ext}").is_file()}
+            if produced_formats and (formats == produced_formats or not opts.require_all_formats):
                 check_cancel(opts.cancel)
                 _commit_dir(work, final)
                 committed = True
@@ -416,6 +418,24 @@ def export_chats(source: ExportSource, chat_ids: list[str],
             if isinstance(exc,ExportCancelled) or not isinstance(exc,Exception):
                 raise
             report.warnings.append(f"{chat_id}: {type(exc).__name__}")
+
+        missing_media = any(not ref.data_uri and (ref.missing or not ref.source) for ref in refs)
+        unknown_content = any(segment.kind == "unknown" for message in messages for segment in message.segments)
+        outcomes = {}
+        for ext in sorted(formats):
+            if committed and ext in produced_formats:
+                reasons = []
+                if unknown_content:
+                    reasons.append("含未解析消息，已保留类型占位")
+                if missing_media and ext in {"html", "pdf"}:
+                    reasons.append("部分媒体未缓存，已保留缺失提示")
+                outcomes[ext] = {"status": "degraded" if reasons else "written", "reason": " · ".join(reasons)}
+            else:
+                reason = pdf_error if ext == "pdf" and pdf_error else failure
+                if ext in produced_formats:
+                    reason = "本次文件未提交，已有导出保留"
+                outcomes[ext] = {"status": "failed", "reason": reason}
+        report.format_results[chat_id] = outcomes
 
         report.messages_total += len(messages)
         if committed:
