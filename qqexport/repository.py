@@ -144,7 +144,7 @@ class MessageRepository:
     def count(self, chat_id):
         return self._counts.get(chat_id,0)
 
-    def _read(self, chat_id, where, params, limit, reverse=False, cursor_order=False):
+    def _read(self, chat_id, where, params, limit, reverse=False, cursor_order=False, *, cache=True):
         if not 1 <= limit <= 1000:
             raise ValueError("页大小必须在 1–1000 之间")
         kind, peer = chat_id.split(":", 1)
@@ -155,19 +155,24 @@ class MessageRepository:
         selected = self._projections[kind]
         order = "DESC" if reverse else "ASC"
         ordering = ",".join(f"o.{key} {order}" for key in ("ts","mid","rid")) if cursor_order else f"o.ord {order}"
+        projection = "o.ord,o.ts,o.mid,o.rid" if cursor_order else "o.ord"
+        payload_start = 4 if cursor_order else 1
         key = (chat_id,where,tuple(params),limit,reverse,cursor_order)
         with self._lock:
             if key in self._pages:
                 self._pages.move_to_end(key)
                 return list(self._pages[key][0])
             rows = self._con.execute(
-                f"SELECT o.ord,o.ts,o.mid,o.rid,{selected} FROM ordering o "
+                f"SELECT {projection},{selected} FROM ordering o "
                 f"JOIN {tables._quote(table)} m ON m.rowid=o.rid "
                 f"WHERE o.chat=? {where} ORDER BY {ordering} LIMIT ?",
                 (chat_id, *params, limit)).fetchall()
             ctx = replace(self.source.ctx, kind=kind, group_id=peer if kind == "group" else None,
                           resolve_uin=self.source.contacts.uin_of)
-            output = [(r[0], Cursor(*r[1:4]), messages.parse_message(dict(zip(cols, r[4:])), ctx)) for r in rows]
+            output = [(row[0], row[1:payload_start],
+                       messages.parse_message(dict(zip(cols, row[payload_start:])), ctx)) for row in rows]
+            if not cache:
+                return output
             # 仅缓存当前只读副本的解析页；限制页数、行数和原始载荷，关闭即清理。
             weight = sum(len(value)*2 if isinstance(value,str) else len(value)
                          if isinstance(value,bytes) else 8 for row in rows for value in row)
@@ -191,12 +196,18 @@ class MessageRepository:
         output = tuple(r[2] for r in rows if not r[2].is_system)
         if reverse:
             output = tuple(reversed(output))
-        return Page(output, rows[-1][1] if rows else after, len(rows) < limit)
+        return Page(output, Cursor(*rows[-1][1]) if rows else after, len(rows) < limit)
 
     def window(self, chat_id, offset, limit=128):
+        return self._window(chat_id, offset, limit, cache=True)
+
+    def uncached_window(self, chat_id, offset, limit=128):
+        return self._window(chat_id, offset, limit, cache=False)
+
+    def _window(self, chat_id, offset, limit, *, cache):
         if offset < 0:
             raise ValueError("消息位置不能为负")
-        return [(r[0], r[2]) for r in self._read(chat_id, "AND o.ord>=?", (offset,), limit)
+        return [(r[0], r[2]) for r in self._read(chat_id, "AND o.ord>=?", (offset,), limit, cache=cache)
                 if not r[2].is_system]
 
     def timestamp_at(self, chat_id, offset):

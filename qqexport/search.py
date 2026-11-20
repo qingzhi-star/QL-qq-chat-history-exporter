@@ -67,15 +67,16 @@ class SearchIndex:
             self.ready, self.count = False, 0
 
     def build(self, repo, *, cancel=None, progress=None):
-        self.clear()
+        read_window = getattr(repo, "uncached_window", repo.window)
         with self.lock:
+            self.clear()
             try:
                 for info in repo.chats():
                     for offset in range(0,repo.count(info.chat_id),512):
                         if cancel is not None and cancel.is_set():
                             raise SearchError("已取消索引")
                         batch = []
-                        for position,msg in repo.window(info.chat_id,offset,512):
+                        for position,msg in read_window(info.chat_id,offset,512):
                             body = "\n".join(segment_text(s) for s in msg.segments)
                             kinds = "|"+"|".join(sorted({s.kind for s in msg.segments}))+"|"
                             batch.append((info.chat_id,msg.msg_id,msg.ts,msg.sender_name,msg.sender_uid,
@@ -84,8 +85,12 @@ class SearchIndex:
                         self.count += len(batch)
                         if progress:
                             progress(self.count)
+                if cancel is not None and cancel.is_set():
+                    raise SearchError("已取消索引")
                 if self.fts:
                     self.con.execute("INSERT INTO words(words) VALUES('rebuild')")
+                if cancel is not None and cancel.is_set():
+                    raise SearchError("已取消索引")
                 self.con.commit()
                 self.ready = True
             except BaseException:

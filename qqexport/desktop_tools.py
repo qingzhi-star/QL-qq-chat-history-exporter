@@ -34,8 +34,13 @@ class DesktopTools:
         if not self.backend.repo:
             raise UserError("请先选择账号或打开归档")
         if self.search is None:
-            self.search = SearchIndex()
-            self.search.build(self.backend.repo)
+            index = SearchIndex()
+            try:
+                index.build(self.backend.repo)
+            except BaseException:
+                index.close()
+                raise
+            self.search = index
         return self.search
 
     def mount(self,source):
